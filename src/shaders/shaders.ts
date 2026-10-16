@@ -8,10 +8,17 @@ import naiveVertRaw from './naive.vs.wgsl?raw';
 import naiveFragRaw from './naive.fs.wgsl?raw';
 
 import forwardPlusFragRaw from './forward_plus.fs.wgsl?raw';
+import depthPrepassFragRaw from './depth_prepass.fs.wgsl?raw';
+import clusterCullingFragRaw from './cluster_culling.fs.wgsl?raw';
 
 import clusteredDeferredFragRaw from './clustered_deferred.fs.wgsl?raw';
 import clusteredDeferredFullscreenVertRaw from './clustered_deferred_fullscreen.vs.wgsl?raw';
 import clusteredDeferredFullscreenFragRaw from './clustered_deferred_fullscreen.fs.wgsl?raw';
+import clusteredDeferredShadingRaw from './clustered_deferred_shading.wgsl?raw';
+import gBufferUnpackedRaw from './gbuffer_unpacked.wgsl?raw';
+import gBufferPackedRaw from './gbuffer_packed.wgsl?raw';
+import clusteredDeferredPackedFragRaw from './clustered_deferred_packed.fs.wgsl?raw';
+import clusteredDeferredLightingComputeRaw from './clustered_deferred_lighting.cs.wgsl?raw';
 
 import moveLightsComputeRaw from './move_lights.cs.wgsl?raw';
 import clusteringComputeRaw from './clustering.cs.wgsl?raw';
@@ -21,16 +28,34 @@ import clusteringComputeRaw from './clustering.cs.wgsl?raw';
 
 // CHECKITOUT: feel free to add more constants here and to refer to them in your shader code
 
+// URL overrides for the cluster grid experiment, e.g. ?clusters=32x18x48&maxLights=1024
+const urlParams = new URLSearchParams(window.location.search);
+const clusterDims = urlParams.get('clusters')?.split('x').map(Number); // "32x18x48" -> [32, 18, 48]
+const maxLightsOverride = urlParams.has('maxLights') ? Number(urlParams.get('maxLights')) : undefined;
+
 // Note that these are declared in a somewhat roundabout way because otherwise minification will drop variables
 // that are unused in host side code.
 export const constants = {
     bindGroup_scene: 0,
     bindGroup_model: 1,
     bindGroup_material: 2,
+    bindGroup_gBuffer: 1, // deferred lighting pass only, it has no model/material groups
+    bindGroup_computeOutput: 2,
 
     moveLightsWorkgroupSize: 128,
 
-    lightRadius: 2
+    lightRadius: 2,
+
+    // light clustering
+    numClustersX: clusterDims?.[0] ?? 16,
+    numClustersY: clusterDims?.[1] ?? 9,
+    numClustersZ: clusterDims?.[2] ?? 24,
+    maxLightsPerCluster: maxLightsOverride ?? 1024, // 512 overflowed with 5000 lights (white in the light count view)
+    clusterNear: 0.1, // depth range for z slicing
+    clusterFar: 40,   // Sponza is ~35 units across, no need to go out to the camera's far plane
+    clusteringWorkgroupSize: 4, // 4x4x4, one thread per cluster
+
+    deferredLightingWorkgroupSize: 8 // 8x8, one thread per pixel
 };
 
 // =================================
@@ -49,10 +74,17 @@ export const naiveVertSrc: string = processShaderRaw(naiveVertRaw);
 export const naiveFragSrc: string = processShaderRaw(naiveFragRaw);
 
 export const forwardPlusFragSrc: string = processShaderRaw(forwardPlusFragRaw);
+export const depthPrepassFragSrc: string = processShaderRaw(depthPrepassFragRaw);
+export const clusterCullingFragSrc: string = processShaderRaw(clusterCullingFragRaw);
 
 export const clusteredDeferredFragSrc: string = processShaderRaw(clusteredDeferredFragRaw);
 export const clusteredDeferredFullscreenVertSrc: string = processShaderRaw(clusteredDeferredFullscreenVertRaw);
-export const clusteredDeferredFullscreenFragSrc: string = processShaderRaw(clusteredDeferredFullscreenFragRaw);
+export const clusteredDeferredFullscreenFragSrc: string = processShaderRaw(gBufferUnpackedRaw + clusteredDeferredShadingRaw + clusteredDeferredFullscreenFragRaw);
+
+// extra credit: G-buffer optimizations
+export const clusteredDeferredPackedFragSrc: string = processShaderRaw(clusteredDeferredPackedFragRaw);
+export const clusteredDeferredLightingComputeSrc: string = processShaderRaw(gBufferUnpackedRaw + clusteredDeferredShadingRaw + clusteredDeferredLightingComputeRaw);
+export const clusteredDeferredPackedLightingComputeSrc: string = processShaderRaw(gBufferPackedRaw + clusteredDeferredShadingRaw + clusteredDeferredLightingComputeRaw);
 
 export const moveLightsComputeSrc: string = processShaderRaw(moveLightsComputeRaw);
 export const clusteringComputeSrc: string = processShaderRaw(clusteringComputeRaw);

@@ -3,14 +3,37 @@ import { toRadians } from "../math_util";
 import { device, canvas, fovYDegrees, aspectRatio } from "../renderer";
 
 class CameraUniforms {
-    readonly buffer = new ArrayBuffer(16 * 4);
+    // same layout as CameraUniforms in common.wgsl: 4 matrices, screenSize, debugMode, 1 float of padding
+    readonly buffer = new ArrayBuffer(68 * 4);
     private readonly floatView = new Float32Array(this.buffer);
+    private readonly uintView = new Uint32Array(this.buffer);
 
     set viewProjMat(mat: Float32Array) {
         // TODO-1.1: set the first 16 elements of `this.floatView` to the input `mat`
+        this.floatView.set(mat, 0);
     }
 
     // TODO-2: add extra functions to set values needed for light clustering here
+    set viewMat(mat: Float32Array) {
+        this.floatView.set(mat, 16);
+    }
+
+    set invProjMat(mat: Float32Array) {
+        this.floatView.set(mat, 32);
+    }
+
+    // deferred uses this to rebuild world position from depth
+    set invViewProjMat(mat: Float32Array) {
+        this.floatView.set(mat, 48);
+    }
+
+    set screenSize(size: [number, number]) {
+        this.floatView.set(size, 64);
+    }
+
+    set debugMode(mode: number) {
+        this.uintView[66] = mode;
+    }
 }
 
 export class Camera {
@@ -25,6 +48,7 @@ export class Camera {
     yaw: number = 0;
     pitch: number = 0;
     moveSpeed: number = 0.004;
+    debugMode: number = 0; // 0 = off, others: see getDebugColor() in common.wgsl
     sensitivity: number = 0.15;
 
     static readonly nearPlane = 0.1;
@@ -38,8 +62,15 @@ export class Camera {
         // check `lights.ts` for examples of using `device.createBuffer()`
         //
         // note that you can add more variables (e.g. inverse proj matrix) to this buffer in later parts of the assignment
+        this.uniformsBuffer = device.createBuffer({
+            label: "camera uniforms",
+            size: this.uniforms.buffer.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
 
         this.projMat = mat4.perspective(toRadians(fovYDegrees), aspectRatio, Camera.nearPlane, Camera.farPlane);
+        this.uniforms.invProjMat = mat4.inverse(this.projMat);
+        this.uniforms.screenSize = [canvas.width, canvas.height];
 
         this.rotateCamera(0, 0); // set initial camera vectors
 
@@ -129,10 +160,16 @@ export class Camera {
         const viewMat = mat4.lookAt(this.cameraPos, lookPos, [0, 1, 0]);
         const viewProjMat = mat4.mul(this.projMat, viewMat);
         // TODO-1.1: set `this.uniforms.viewProjMat` to the newly calculated view proj mat
+        this.uniforms.viewProjMat = viewProjMat;
 
         // TODO-2: write to extra buffers needed for light clustering here
+        // (invProjMat and screenSize don't change, they're set once in the constructor)
+        this.uniforms.viewMat = viewMat;
+        this.uniforms.debugMode = this.debugMode;
+        this.uniforms.invViewProjMat = mat4.inverse(viewProjMat);
 
         // TODO-1.1: upload `this.uniforms.buffer` (host side) to `this.uniformsBuffer` (device side)
         // check `lights.ts` for examples of using `device.queue.writeBuffer()`
+        device.queue.writeBuffer(this.uniformsBuffer, 0, this.uniforms.buffer);
     }
 }

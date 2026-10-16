@@ -2,12 +2,14 @@ import { Scene } from './stage/scene';
 import { Lights } from './stage/lights';
 import { Camera } from './stage/camera';
 import { Stage } from './stage/stage';
+import { GpuTimer } from './gpu_timer';
 
 export var canvas: HTMLCanvasElement;
 export var canvasFormat: GPUTextureFormat;
 export var context: GPUCanvasContext;
 export var device: GPUDevice;
 export var canvasTextureView: GPUTextureView;
+export var canTimestamp: boolean;
 
 export var aspectRatio: number;
 export const fovYDegrees = 45;
@@ -41,13 +43,19 @@ export async function initWebGPU() {
         throw new Error("no appropriate GPUAdapter found");
     }
 
-    device = await adapter.requestDevice();
+    // for per-pass GPU timing (gpu_timer.ts)
+    canTimestamp = adapter.features.has('timestamp-query');
+    device = await adapter.requestDevice({
+        requiredFeatures: canTimestamp ? ['timestamp-query'] : []
+    });
 
     context = canvas.getContext("webgpu")!;
-    canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+    // rgba8unorm instead of the preferred bgra8unorm, so the deferred compute pass can write to it as a storage texture
+    canvasFormat = "rgba8unorm";
     context.configure({
         device: device,
         format: canvasFormat,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.STORAGE_BINDING
     });
 
     console.log("WebGPU init successsful");
@@ -107,24 +115,35 @@ export abstract class Renderer {
     protected camera: Camera;
 
     protected stats: Stats;
+    protected readonly gpuTimer: GpuTimer;
 
     private prevTime: number = 0;
     private frameRequestId: number;
 
-    constructor(stage: Stage) {
+    // passNames: the passes draw() runs, for GPU timing
+    constructor(stage: Stage, passNames: string[]) {
         this.scene = stage.scene;
         this.lights = stage.lights;
         this.camera = stage.camera;
         this.stats = stage.stats;
+        this.gpuTimer = new GpuTimer(passNames);
 
         this.frameRequestId = requestAnimationFrame((t) => this.onFrame(t));
     }
 
     stop(): void {
         cancelAnimationFrame(this.frameRequestId);
+        this.gpuTimer.destroy();
     }
 
     protected abstract draw(): void;
+
+    // use this instead of queue.submit() so the timestamps get read back
+    protected submit(encoder: GPUCommandEncoder) {
+        this.gpuTimer.resolve(encoder);
+        device.queue.submit([encoder.finish()]);
+        this.gpuTimer.read();
+    }
 
     // CHECKITOUT: this is the main rendering loop
     private onFrame(time: number) {

@@ -43,14 +43,43 @@ function setRenderer(mode: string) {
         case renderModes.forwardPlus:
             renderer = new ForwardPlusRenderer(stage);
             break;
+        case renderModes.forwardPlusPrepass:
+            renderer = new ForwardPlusRenderer(stage, { depthPrepass: true, clusterCulling: false });
+            break;
+        case renderModes.forwardPlusCulling:
+            renderer = new ForwardPlusRenderer(stage, { depthPrepass: true, clusterCulling: true });
+            break;
         case renderModes.clusteredDeferred:
             renderer = new ClusteredDeferredRenderer(stage);
+            break;
+        case renderModes.deferredCompute:
+            renderer = new ClusteredDeferredRenderer(stage, { computeLighting: true, packedGBuffer: false });
+            break;
+        case renderModes.deferredComputePacked:
+            renderer = new ClusteredDeferredRenderer(stage, { computeLighting: true, packedGBuffer: true });
             break;
     }
 }
 
-const renderModes = { naive: 'naive', forwardPlus: 'forward+', clusteredDeferred: 'clustered deferred' };
+const renderModes = {
+    naive: 'naive',
+    forwardPlus: 'forward+',
+    forwardPlusPrepass: 'forward+: depth prepass', // extra credit
+    forwardPlusCulling: 'forward+: prepass + cluster culling', // extra credit
+    clusteredDeferred: 'clustered deferred',
+    // G-buffer optimizations (extra credit)
+    deferredCompute: 'deferred: compute lighting',
+    deferredComputePacked: 'deferred: compute + packed G-buffer'
+};
 let renderModeController = gui.add({ mode: renderModes.naive }, 'mode', renderModes);
 renderModeController.onChange(setRenderer);
 
 setRenderer(renderModeController.getValue());
+
+// debug views, only for the clustered renderers
+const debugModes = { off: 0, clusterIndex: 1, zSlice: 2, lightCount: 3 };
+gui.add(camera, 'debugMode', debugModes).onChange((mode: string) => {
+    camera.debugMode = Number(mode); // dat.GUI hands option values back as strings
+});
+
+(window as any).countActiveClusters = () => lights.countActiveClusters(); // for the analysis, only meaningful in cluster culling mode

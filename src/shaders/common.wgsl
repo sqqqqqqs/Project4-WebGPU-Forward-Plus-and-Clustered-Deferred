@@ -11,9 +11,111 @@ struct LightSet {
 }
 
 // TODO-2: you may want to create a ClusterSet struct similar to LightSet
+struct Cluster {
+    numLights: u32,
+    lightIndices: array<u32, ${maxLightsPerCluster}>
+}
+
+struct ClusterSet {
+    clusters: array<Cluster>
+}
 
 struct CameraUniforms {
     // TODO-1.3: add an entry for the view proj mat (of type mat4x4f)
+    viewProjMat: mat4x4f,
+    viewMat: mat4x4f,
+    invProjMat: mat4x4f,
+    invViewProjMat: mat4x4f,
+    screenSize: vec2f,
+    debugMode: u32
+}
+
+// x first, then y, then z
+fn getClusterIndex(clusterXYZ: vec3u) -> u32 {
+    return clusterXYZ.x + clusterXYZ.y * ${numClustersX} + clusterXYZ.z * ${numClustersX} * ${numClustersY};
+}
+
+// view depth where the given z slice starts (log spacing)
+fn getSliceDepth(slice: f32) -> f32 {
+    return ${clusterNear} * pow(${clusterFar} / ${clusterNear}, slice / f32(${numClustersZ}));
+}
+
+// fragCoord = @builtin(position).xy (pixels, top left origin), viewDepth = distance along -z
+fn getClusterIndexFromFrag(fragCoord: vec2f, viewDepth: f32, screenSize: vec2f) -> u32 {
+    // x, y: which screen tile the pixel is in
+    let numClustersXY = vec2f(${numClustersX}, ${numClustersY});
+    let tile = vec2u(fragCoord / screenSize * numClustersXY);
+    let xy = min(tile, vec2u(numClustersXY) - 1); // the very last pixel row/column would land one tile too far
+
+    // z: inverse of getSliceDepth(), clamped so anything past clusterFar goes in the last slice
+    let slice = log(viewDepth / ${clusterNear}) / log(${clusterFar} / ${clusterNear}) * f32(${numClustersZ});
+    let z = u32(clamp(slice, 0, f32(${numClustersZ} - 1)));
+
+    return getClusterIndex(vec3u(xy, z));
+}
+
+// G-BUFFER
+// =================================
+
+struct GBufferSample {
+    albedo: vec3f,
+    nor: vec3f
+}
+
+// octahedron normal encoding: unit vector <-> [-1, 1]^2
+fn signNotZero(v: vec2f) -> vec2f {
+    return select(vec2f(-1), vec2f(1), v >= vec2f(0));
+}
+
+fn octEncode(n: vec3f) -> vec2f {
+    // project onto the octahedron |x| + |y| + |z| = 1, then look at it from above
+    var p = n.xy / (abs(n.x) + abs(n.y) + abs(n.z));
+    if (n.z < 0) {
+        // the bottom half gets folded out over the corners of the square
+        p = (1 - abs(p.yx)) * signNotZero(p);
+    }
+    return p;
+}
+
+fn octDecode(e: vec2f) -> vec3f {
+    var n = vec3f(e, 1 - abs(e.x) - abs(e.y));
+    if (n.z < 0) {
+        // undo the fold
+        n = vec3f((1 - abs(n.yx)) * signNotZero(n.xy), n.z);
+    }
+    return normalize(n);
+}
+
+// DEBUG VIEWS
+// =================================
+
+// PCG hash, just to get random looking debug colors
+fn hashToColor(i: u32) -> vec3f {
+    var h = i * 747796405u + 2891336453u;
+    h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
+    h = (h >> 22u) ^ h;
+    return vec3f(f32(h & 0xffu), f32((h >> 8u) & 0xffu), f32((h >> 16u) & 0xffu)) / 255.f;
+}
+
+// blue = few lights, red = 128+, white = cluster is full
+fn heatmapColor(numLights: u32) -> vec3f {
+    if (numLights >= ${maxLightsPerCluster}) {
+        return vec3f(1);
+    }
+    let t = clamp(f32(numLights) / 128.f, 0.f, 1.f);
+    let red = smoothstep(0.5f, 1.f, t);          // fades in over the top half
+    let green = 1.f - abs(2.f * t - 1.f);        // peaks in the middle
+    let blue = 1.f - smoothstep(0.f, 0.5f, t);   // fades out over the bottom half
+    return vec3f(red, green, blue);
+}
+
+// 1 = cluster index, 2 = z slice, 3 = lights per cluster
+fn getDebugColor(debugMode: u32, clusterIdx: u32, numLights: u32) -> vec3f {
+    switch debugMode {
+        case 1u: { return hashToColor(clusterIdx); }
+        case 2u: { return hashToColor(clusterIdx / (${numClustersX} * ${numClustersY})); }
+        default: { return heatmapColor(numLights); }
+    }
 }
 
 // CHECKITOUT: this special attenuation function ensures lights don't affect geometry outside the maximum light radius
