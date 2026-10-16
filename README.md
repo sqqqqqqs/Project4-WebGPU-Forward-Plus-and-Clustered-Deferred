@@ -14,7 +14,12 @@ WebGL Forward+ and Clustered Deferred Shading
 
 [![](https://img.youtube.com/vi/PUb5STgKhv0/hqdefault.jpg)](https://youtu.be/PUb5STgKhv0)
 
-*(Click to watch on YouTube: every render mode, 500 → 5000 lights, and the three debug views.)*
+Click to watch on YouTube. The video shows:
+
+- **Naive → Forward+ → Clustered Deferred** at 500 lights, with the per-pass GPU time (top left) dropping at each step
+- **5000 lights** while flying through the scene, still running smoothly with clustering
+- The **extra credit modes**: Forward+ with depth prepass and with cluster culling, then deferred with compute lighting and with the packed G-buffer
+- The three **debug views**: cluster index, z slices, and lights per cluster
 
 ## Features
 
@@ -22,7 +27,7 @@ A WebGPU renderer for the Sponza atrium lit by up to 5000 moving point lights. I
 
 **Required**
 - **Naive** forward renderer with the camera view-projection uniform.
-- **Forward+**: a compute shader splits the view frustum into 16 x 9 x 24 clusters (logarithmic depth slices), assigns each light to the clusters its sphere overlaps, and the fragment shader only loops over its own cluster's lights.
+- **Forward+**: a compute shader splits the view frustum into 32 x 18 x 48 clusters (one near slice, then logarithmic depth slices), assigns each light to the clusters its sphere overlaps, and the fragment shader only loops over its own cluster's lights.
 - **Clustered Deferred**: reuses the same light clustering; a G-buffer pass writes albedo + normal (+ depth), then a fullscreen pass reconstructs world position from depth and shades each pixel once.
 
 **Extra credit**
@@ -43,7 +48,7 @@ The lights-per-cluster view (blue = few, green, red = many, shown with 1000 ligh
 
 ## Performance Analysis
 
-All numbers are GPU time in ms measured with timestamp queries, averaged over ~5 s per configuration from the default camera view. Within each chart or table, all results come from the **same** run; absolute numbers vary somewhat between runs (laptop GPU clocks), so compare within a chart.
+All numbers are GPU time in ms measured with timestamp queries, averaged over ~5 s per configuration from the default camera view. Unless noted otherwise they were measured with the original 16 x 9 x 24 grid and plain log slicing; the default grid was changed afterwards based on the grid experiment below. Within each chart or table, all results come from the **same** run; absolute numbers vary somewhat between runs (laptop GPU clocks), so compare within a chart.
 
 ### Forward+ vs. Clustered Deferred
 
@@ -84,7 +89,7 @@ The grid can be changed with a URL parameter (`?clusters=32x18x48`) to compare t
 
 - **Finer grids make shading much cheaper**: smaller clusters overlap fewer lights, so each pixel loops over fewer of them (lighting pass 9.95 → 3.26 ms).
 - **The clustering pass stays flat (~0.9 ms) even with 58x more clusters.** Each thread still loops over all lights, and even 27648 threads (~860 warps) all run at the same time on this GPU, so the pass takes as long as one thread's loop no matter how many clusters there are.
-- So on this GPU the finer grid is better. The limit is memory: with fixed-size light lists, the 32x18x48 cluster buffer is 113 MB, close to WebGPU's default 128 MB storage binding limit.
+- So on this GPU the finer grid is better, and **32 x 18 x 48 is now the default**. The limit is memory: with fixed-size light lists, the 32x18x48 cluster buffer is 113 MB, close to WebGPU's default 128 MB storage binding limit.
 
 ### Depth prepass for Forward+ (extra credit)
 
@@ -120,9 +125,17 @@ After the depth prepass, a fullscreen pass reads the depth buffer (attached read
 ### Other notes
 
 - **Cluster depth range** is hard-coded to 0.1–40 instead of the camera's far plane (1000), as the recitation allows: Sponza is ~35 units across, so with 1000 most log slices would be wasted outside the scene. Anything farther than 40 falls into the last slice, which only matters if the camera leaves the building.
-- **Max lights per cluster** started at 512, but the heatmap showed full (white) clusters at 5000 lights, which silently drops lights. Raised to 1024 (14 MB cluster buffer). A global light index list with per-cluster offsets would use memory proportional to the actual light count instead.
+- **Near slice**: with plain log slicing, 0.1–1 takes up log(10) / log(400) ≈ 38% of the slices, right in front of the camera where there's hardly any geometry. Slice 0 now covers all of 0.1–1 by itself and the other 47 are log spaced over 1–40, so they're spent where the scene actually is (same idea as the special near slice in id Software's Doom 2016 clustered renderer).
+- **Max lights per cluster** started at 512, but the heatmap showed full (white) clusters at 5000 lights, which silently drops lights, so it was raised to 1024. After the switch to 32 x 18 x 48 I read the cluster buffer back to check again (at the 2560 x 1305 aspect ratio, 5000 lights): the fullest cluster had ~770 lights, so 512 still overflows (up to ~1900 full clusters) and 1024 stays, making the cluster buffer 113 MB. A global light index list with per-cluster offsets would use memory proportional to the actual light count instead.
 - **Production build fix**: the deployed site first rendered black because every shader failed to compile with `undefined` in place of `lightRadius`, `clusterNear` and `clusterFar`. `evalShaderRaw()` in `shaders.ts` read the constants through `eval`, so the production build couldn't see that the shaders use them and dropped the properties only shaders read (`lightRadius` from the base code included). It now passes the object into `new Function(...)` explicitly, which keeps every property. `npm run dev` never showed it since it doesn't minify.
 - **Timestamp quirk**: on Chrome/D3D12, the Forward+ shading pass returned 0 for its timestamps while its depth attachment used `depthStoreOp: "discard"`. Switched it to `"store"`.
+
+## Changes after the deadline
+
+Everything above was submitted on time. These changes came after the deadline, while testing the deployed site:
+
+- **Fix: live demo rendered black** (commit `page fix`). The production build dropped the shader-only constants, see "Production build fix" above. This only touched `evalShaderRaw()` in `shaders.ts` and didn't change any rendering logic.
+- **Improvement: default cluster grid and near slice.** Based on the grid experiment, the default grid went from 16 x 9 x 24 to 32 x 18 x 48, and z slice 0 now covers 0.1–1 by itself (see "Near slice" above). The performance numbers in this README were measured before this change, with the original grid.
 
 ## Credits
 

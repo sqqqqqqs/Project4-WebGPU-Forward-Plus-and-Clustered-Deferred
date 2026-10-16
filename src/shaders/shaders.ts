@@ -47,12 +47,14 @@ export const constants = {
     lightRadius: 2,
 
     // light clustering
-    numClustersX: clusterDims?.[0] ?? 16,
-    numClustersY: clusterDims?.[1] ?? 9,
-    numClustersZ: clusterDims?.[2] ?? 24,
-    maxLightsPerCluster: maxLightsOverride ?? 1024, // 512 overflowed with 5000 lights (white in the light count view)
-    clusterNear: 0.1, // depth range for z slicing
-    clusterFar: 40,   // Sponza is ~35 units across, no need to go out to the camera's far plane
+    // 32x18x48 beat 16x9x24 in the cluster grid experiment (see README): smaller clusters, fewer lights per pixel
+    numClustersX: clusterDims?.[0] ?? 32,
+    numClustersY: clusterDims?.[1] ?? 18,
+    numClustersZ: clusterDims?.[2] ?? 48,
+    maxLightsPerCluster: maxLightsOverride ?? 1024, // with 5000 lights the fullest cluster had ~770, 512 overflowed
+    clusterNear: 0.1,          // depth range for z slicing
+    clusterFirstSliceEnd: 1,   // slice 0 covers all of clusterNear..1 since there's hardly anything that close
+    clusterFar: 40,            // Sponza is ~35 units across, no need to go out to the camera's far plane
     clusteringWorkgroupSize: 4, // 4x4x4, one thread per cluster
 
     deferredLightingWorkgroupSize: 8 // 8x8, one thread per pixel
@@ -62,7 +64,7 @@ export const constants = {
 
 function evalShaderRaw(raw: string) {
     // constants gets passed in instead of read through eval: otherwise the production build can't see that the
-    // shaders use it and drops the properties only shaders read (lightRadius, clusterNear, clusterFar)
+    // shaders use it and drops the properties only shaders read (e.g. lightRadius, clusterNear, clusterFar)
     return new Function('constants', 'return `' + raw.replaceAll('${', '${constants.') + '`;')(constants);
 }
 

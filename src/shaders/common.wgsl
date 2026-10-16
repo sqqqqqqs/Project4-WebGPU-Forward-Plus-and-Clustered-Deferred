@@ -35,9 +35,15 @@ fn getClusterIndex(clusterXYZ: vec3u) -> u32 {
     return clusterXYZ.x + clusterXYZ.y * ${numClustersX} + clusterXYZ.z * ${numClustersX} * ${numClustersY};
 }
 
-// view depth where the given z slice starts (log spacing)
+// view depth where the given z slice starts.
+// slice 0 is one "near slice" from clusterNear to clusterFirstSliceEnd (there's hardly anything that close to the camera,
+// so plain log slicing would waste a lot of slices there), the rest are log spaced from clusterFirstSliceEnd to clusterFar
 fn getSliceDepth(slice: f32) -> f32 {
-    return ${clusterNear} * pow(${clusterFar} / ${clusterNear}, slice / f32(${numClustersZ}));
+    if (slice < 1) {
+        return ${clusterNear};
+    }
+    let t = (slice - 1) / f32(${numClustersZ} - 1);
+    return ${clusterFirstSliceEnd} * pow(${clusterFar} / ${clusterFirstSliceEnd}, t);
 }
 
 // fragCoord = @builtin(position).xy (pixels, top left origin), viewDepth = distance along -z
@@ -48,8 +54,11 @@ fn getClusterIndexFromFrag(fragCoord: vec2f, viewDepth: f32, screenSize: vec2f) 
     let xy = min(tile, vec2u(numClustersXY) - 1); // the very last pixel row/column would land one tile too far
 
     // z: inverse of getSliceDepth(), clamped so anything past clusterFar goes in the last slice
-    let slice = log(viewDepth / ${clusterNear}) / log(${clusterFar} / ${clusterNear}) * f32(${numClustersZ});
-    let z = u32(clamp(slice, 0, f32(${numClustersZ} - 1)));
+    var z = 0u; // the near slice
+    if (viewDepth >= ${clusterFirstSliceEnd}) {
+        let t = log(viewDepth / ${clusterFirstSliceEnd}) / log(${clusterFar} / ${clusterFirstSliceEnd});
+        z = u32(clamp(1 + t * f32(${numClustersZ} - 1), 1, f32(${numClustersZ} - 1)));
+    }
 
     return getClusterIndex(vec3u(xy, z));
 }
