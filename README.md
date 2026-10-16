@@ -130,9 +130,9 @@ After the depth prepass, a fullscreen pass reads the depth buffer (attached read
 - **Production build fix**: the deployed site first rendered black because every shader failed to compile with `undefined` in place of `lightRadius`, `clusterNear` and `clusterFar`. `evalShaderRaw()` in `shaders.ts` read the constants through `eval`, so the production build couldn't see that the shaders use them and dropped the properties only shaders read (`lightRadius` from the base code included). It now passes the object into `new Function(...)` explicitly, which keeps every property. `npm run dev` never showed it since it doesn't minify.
 - **Timestamp quirk**: on Chrome/D3D12, the Forward+ shading pass returned 0 for its timestamps while its depth attachment used `depthStoreOp: "discard"`. Switched it to `"store"`.
 
-## Changes after the deadline
+## Changes after testing
 
-Everything above was submitted on time. These changes came after the deadline, while testing the deployed site:
+Everything above was tested accordingly. These changes came after the analysis testing:
 
 - **Fix: live demo rendered black** (commit `page fix`). The production build dropped the shader-only constants, see "Production build fix" above. This only touched `evalShaderRaw()` in `shaders.ts` and didn't change any rendering logic.
 - **Improvement: default cluster grid and near slice.** Based on the grid experiment, the default grid went from 16 x 9 x 24 to 32 x 18 x 48, and z slice 0 now covers 0.1–1 by itself (see "Near slice" above). The performance numbers in this README were measured before this change, with the original grid.
