@@ -121,6 +121,7 @@ After the depth prepass, a fullscreen pass reads the depth buffer (attached read
 
 - **Cluster depth range** is hard-coded to 0.1–40 instead of the camera's far plane (1000), as the recitation allows: Sponza is ~35 units across, so with 1000 most log slices would be wasted outside the scene. Anything farther than 40 falls into the last slice, which only matters if the camera leaves the building.
 - **Max lights per cluster** started at 512, but the heatmap showed full (white) clusters at 5000 lights, which silently drops lights. Raised to 1024 (14 MB cluster buffer). A global light index list with per-cluster offsets would use memory proportional to the actual light count instead.
+- **Production build fix**: the deployed site first rendered black because every shader failed to compile with `undefined` in place of `lightRadius`, `clusterNear` and `clusterFar`. `evalShaderRaw()` in `shaders.ts` read the constants through `eval`, so the production build couldn't see that the shaders use them and dropped the properties only shaders read (`lightRadius` from the base code included). It now passes the object into `new Function(...)` explicitly, which keeps every property. `npm run dev` never showed it since it doesn't minify.
 - **Timestamp quirk**: on Chrome/D3D12, the Forward+ shading pass returned 0 for its timestamps while its depth attachment used `depthStoreOp: "discard"`. Switched it to `"store"`.
 
 ## Credits

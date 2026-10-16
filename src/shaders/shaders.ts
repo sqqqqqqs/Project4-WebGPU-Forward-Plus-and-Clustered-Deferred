@@ -61,7 +61,9 @@ export const constants = {
 // =================================
 
 function evalShaderRaw(raw: string) {
-    return eval('`' + raw.replaceAll('${', '${constants.') + '`');
+    // constants gets passed in instead of read through eval: otherwise the production build can't see that the
+    // shaders use it and drops the properties only shaders read (lightRadius, clusterNear, clusterFar)
+    return new Function('constants', 'return `' + raw.replaceAll('${', '${constants.') + '`;')(constants);
 }
 
 const commonSrc: string = evalShaderRaw(commonRaw);
