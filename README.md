@@ -95,6 +95,22 @@ The grid can be changed with a URL parameter (`?clusters=32x18x48`) to compare t
 - **The clustering pass stays flat (~0.9 ms) even with 58x more clusters.** Each thread still loops over all lights, and even 27648 threads (~860 warps) all run at the same time on this GPU, so the pass takes as long as one thread's loop no matter how many clusters there are.
 - So on this GPU the finer grid is better, and **32 x 18 x 48 is now the default**. The limit is memory: with fixed-size light lists, the 32x18x48 cluster buffer is 113 MB, close to WebGPU's default 128 MB storage binding limit.
 
+### Tiled vs. clustered
+
+Tiled shading only splits the screen into 2D tiles, so each tile covers the whole depth range (recitation p.13). Setting `?clusters=32x18x2&maxLights=5000` gives the same tiles with just the near slice plus one slice for 1–40, which is basically tiled:
+
+| Lights | Tiled lighting (32x18x2) | Clustered lighting (32x18x48) | Tiled is |
+|---|---|---|---|
+| 1000 | 5.47 | 0.66 | 8.3x slower |
+| 3000 | 20.83 | 1.99 | 10.5x slower |
+| 5000 | 32.37 | 3.26 | 9.9x slower |
+
+*(Clustered Deferred, default view; the clustered numbers are from the grid experiment above.)*
+
+- Clustering and the G-buffer pass barely change; the whole difference is in the lighting pass.
+- Without depth slices, a tile's light list holds every light anywhere along the corridor from near to far, so each pixel loops over about 10x more lights. Slicing in depth is what keeps the lists short, especially at depth discontinuities where one tile has both near and far geometry.
+- Real tiled renderers usually tighten each tile to the min/max depth from a depth prepass, which closes some of this gap; this comparison is the naive version without that.
+
 ### Depth prepass for Forward+ (extra credit)
 
 A depth-only pass (with the alpha test, so the plants' cutouts stay transparent) fills the depth buffer, then the shading pass uses `depthCompare: "equal"` with depth writes off, so only the visible fragment of each pixel is shaded. `@invariant` on the position makes both passes produce bit-identical depth, and the shading pass skips its `discard` (via a pipeline-overridable constant) so early-Z is not disabled.
