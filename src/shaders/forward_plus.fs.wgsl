@@ -42,6 +42,9 @@ fn main(in: FragmentInput) -> @location(0) vec4f
     }
 
     let viewDepth = -(cameraUniforms.viewMat * vec4f(in.pos, 1)).z;
+    if (cameraUniforms.debugMode >= 4u) {
+        return vec4(getGBufferDebugColor(cameraUniforms.debugMode, diffuseColor.rgb, normalize(in.nor), viewDepth, in.pos), 1);
+    }
     let clusterIdx = getClusterIndexFromFrag(in.fragPos.xy, viewDepth, cameraUniforms.screenSize);
     let cluster = &clusterSet.clusters[clusterIdx];
 

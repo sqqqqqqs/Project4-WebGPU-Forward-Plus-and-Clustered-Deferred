@@ -37,12 +37,16 @@ A WebGPU renderer for the Sponza atrium lit by up to 5000 moving point lights. I
 **Render modes** in the GUI: `naive`, `forward+`, `clustered deferred` (required), and `forward+: depth prepass`, `forward+: prepass + cluster culling`, `deferred: compute lighting`, `deferred: compute + packed G-buffer` (extra credit).
 
 **Tools for the analysis**
-- Debug views (GUI `debugMode`): cluster index, z slice, lights per cluster (heatmap, white = cluster full).
+- Debug views (GUI `debugMode`): cluster index, z slice, lights per cluster (heatmap, white = cluster full), and the G-buffer contents from the recitation (albedo, normal, depth, position). The position view in Clustered Deferred is rebuilt from depth while Forward+ shows the interpolated vertex position, so the two matching checks the depth reconstruction.
 - Per-pass GPU timing with timestamp queries, shown on screen (top left). Every pass passes `timestampWrites` from a small `GpuTimer` ([`src/gpu_timer.ts`](src/gpu_timer.ts)), and the renderers call `this.submit(encoder)` (in the base `Renderer`) instead of `device.queue.submit()`, which resolves the queries and reads them back after submitting.
 
 | Cluster index | Z slices (log) | Lights per cluster |
 |---|---|---|
 | ![](img/debug_cluster.png) | ![](img/debug_zslice.png) | ![](img/debug_lightcount.png) |
+
+| Albedo | Normal | Depth | Position |
+|---|---|---|---|
+| ![](img/gbuffer_albedo.png) | ![](img/gbuffer_normal.png) | ![](img/gbuffer_depth.png) | ![](img/gbuffer_position.png) |
 
 The lights-per-cluster view (blue = few, green, red = many, shown with 1000 lights) maps directly to shading cost: each pixel loops over exactly that many lights, so the red regions are where the shading/lighting pass spends its time. Clusters grow with distance (log slicing + perspective), so large mid-distance clusters inside the volume the lights move in collect the most lights, while the far end of the hall, outside that volume, gets few.
 

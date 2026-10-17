@@ -77,7 +77,7 @@ renderModeController.onChange(setRenderer);
 setRenderer(renderModeController.getValue());
 
 // debug views, only for the clustered renderers
-const debugModes = { off: 0, clusterIndex: 1, zSlice: 2, lightCount: 3 };
+const debugModes = { off: 0, clusterIndex: 1, zSlice: 2, lightCount: 3, albedo: 4, normal: 5, depth: 6, position: 7 };
 gui.add(camera, 'debugMode', debugModes).onChange((mode: string) => {
     camera.debugMode = Number(mode); // dat.GUI hands option values back as strings
 });

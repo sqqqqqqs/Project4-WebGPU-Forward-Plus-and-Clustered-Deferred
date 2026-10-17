@@ -24,6 +24,9 @@ fn shadePixel(pixel: vec2u, fragCoord: vec2f) -> vec4f
     let posWorld = posWorldH.xyz / posWorldH.w;
 
     let viewDepth = -(cameraUniforms.viewMat * vec4f(posWorld, 1)).z;
+    if (cameraUniforms.debugMode >= 4u) {
+        return vec4(getGBufferDebugColor(cameraUniforms.debugMode, gBuffer.albedo, gBuffer.nor, viewDepth, posWorld), 1);
+    }
     let clusterIdx = getClusterIndexFromFrag(fragCoord, viewDepth, cameraUniforms.screenSize);
     let cluster = &clusterSet.clusters[clusterIdx];
 

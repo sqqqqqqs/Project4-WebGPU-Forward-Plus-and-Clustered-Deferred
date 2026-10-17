@@ -118,6 +118,16 @@ fn heatmapColor(numLights: u32) -> vec3f {
     return vec3f(red, green, blue);
 }
 
+// 4 = albedo, 5 = normal, 6 = depth, 7 = position (the G-buffer debug images from the recitation)
+fn getGBufferDebugColor(debugMode: u32, albedo: vec3f, nor: vec3f, viewDepth: f32, posWorld: vec3f) -> vec3f {
+    switch debugMode {
+        case 4u: { return albedo; }
+        case 5u: { return nor * 0.5 + 0.5; }                // [-1, 1] -> [0, 1]
+        case 6u: { return vec3f(viewDepth / ${clusterFar}); } // brighter = farther
+        default: { return posWorld / 30 + 0.5; }             // Sponza is ~30 units across
+    }
+}
+
 // 1 = cluster index, 2 = z slice, 3 = lights per cluster
 fn getDebugColor(debugMode: u32, clusterIdx: u32, numLights: u32) -> vec3f {
     switch debugMode {
